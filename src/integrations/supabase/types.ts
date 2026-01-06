@@ -128,11 +128,15 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          challenges: string | null
           created_at: string
+          current_education: string | null
           current_phase: string | null
           current_streak: number | null
           current_weight: number | null
+          education_field: string | null
           full_name: string | null
+          goal: string | null
           id: string
           longest_streak: number | null
           target_weight: number | null
@@ -143,11 +147,15 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          challenges?: string | null
           created_at?: string
+          current_education?: string | null
           current_phase?: string | null
           current_streak?: number | null
           current_weight?: number | null
+          education_field?: string | null
           full_name?: string | null
+          goal?: string | null
           id?: string
           longest_streak?: number | null
           target_weight?: number | null
@@ -158,11 +166,15 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          challenges?: string | null
           created_at?: string
+          current_education?: string | null
           current_phase?: string | null
           current_streak?: number | null
           current_weight?: number | null
+          education_field?: string | null
           full_name?: string | null
+          goal?: string | null
           id?: string
           longest_streak?: number | null
           target_weight?: number | null
