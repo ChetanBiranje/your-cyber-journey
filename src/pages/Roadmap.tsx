@@ -4,6 +4,23 @@ import { Card3D } from "@/components/Card3D";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { 
   GraduationCap, 
@@ -14,7 +31,9 @@ import {
   Shield,
   Award,
   FileText,
-  Target
+  Target,
+  Plus,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -49,11 +68,35 @@ const phaseColors: Record<string, string> = {
   "PhD": "primary",
 };
 
+const phaseOptions = [
+  "Foundation",
+  "Learning",
+  "Practice",
+  "Certification",
+  "BCA Year 1",
+  "BCA Year 2",
+  "BCA Year 3",
+  "Masters Prep",
+  "Masters",
+  "PhD Prep",
+  "PhD",
+  "Career",
+  "Custom"
+];
+
 export default function Roadmap() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newMilestone, setNewMilestone] = useState({
+    phase: "",
+    title: "",
+    description: "",
+    target_date: ""
+  });
 
   useEffect(() => {
     fetchMilestones();
@@ -92,7 +135,68 @@ export default function Roadmap() {
     } else {
       toast({
         title: !isCompleted ? "Milestone Completed!" : "Milestone Unmarked",
-        description: !isCompleted ? "Great progress on your PhD journey!" : "",
+        description: !isCompleted ? "Great progress on your journey!" : "",
+      });
+      fetchMilestones();
+    }
+  }
+
+  async function createMilestone() {
+    if (!user || !newMilestone.phase || !newMilestone.title) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in phase and title",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreating(true);
+    const { error } = await supabase
+      .from("roadmap_milestones")
+      .insert({
+        user_id: user.id,
+        phase: newMilestone.phase,
+        title: newMilestone.title.trim(),
+        description: newMilestone.description.trim() || null,
+        target_date: newMilestone.target_date || null,
+        is_completed: false
+      });
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create milestone",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Milestone Created! 🎯",
+        description: "Your custom milestone has been added",
+      });
+      setNewMilestone({ phase: "", title: "", description: "", target_date: "" });
+      setDialogOpen(false);
+      fetchMilestones();
+    }
+    setCreating(false);
+  }
+
+  async function deleteMilestone(id: string) {
+    const { error } = await supabase
+      .from("roadmap_milestones")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete milestone",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Milestone Deleted",
+        description: "The milestone has been removed",
       });
       fetchMilestones();
     }
@@ -127,29 +231,98 @@ export default function Roadmap() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-slide-up">
           <div>
-            <h1 className="text-3xl font-bold">PhD Roadmap</h1>
+            <h1 className="text-3xl font-bold">My Roadmap</h1>
             <p className="text-muted-foreground mt-1">
-              Your journey from BCA to Cyber Security PhD
+              Track your journey towards your goals
             </p>
           </div>
-          <Card3D variant="glass" className="!p-4">
-            <div className="flex items-center gap-4">
-              <div className="text-center">
-                <p className="text-3xl font-bold font-mono text-gradient">{completedCount}</p>
-                <p className="text-xs text-muted-foreground">Completed</p>
+          <div className="flex items-center gap-3">
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Milestone
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Custom Milestone</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phase">Phase *</Label>
+                    <Select
+                      value={newMilestone.phase}
+                      onValueChange={(value) => setNewMilestone(prev => ({ ...prev, phase: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a phase" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {phaseOptions.map((phase) => (
+                          <SelectItem key={phase} value={phase}>{phase}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      placeholder="e.g., Complete React course"
+                      value={newMilestone.title}
+                      onChange={(e) => setNewMilestone(prev => ({ ...prev, title: e.target.value }))}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Optional details about this milestone"
+                      value={newMilestone.description}
+                      onChange={(e) => setNewMilestone(prev => ({ ...prev, description: e.target.value }))}
+                      maxLength={500}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="target_date">Target Date</Label>
+                    <Input
+                      id="target_date"
+                      type="date"
+                      value={newMilestone.target_date}
+                      onChange={(e) => setNewMilestone(prev => ({ ...prev, target_date: e.target.value }))}
+                    />
+                  </div>
+                  <Button 
+                    className="w-full" 
+                    onClick={createMilestone}
+                    disabled={creating || !newMilestone.phase || !newMilestone.title}
+                  >
+                    {creating ? "Creating..." : "Create Milestone"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Card3D variant="glass" className="!p-4">
+              <div className="flex items-center gap-4">
+                <div className="text-center">
+                  <p className="text-3xl font-bold font-mono text-gradient">{completedCount}</p>
+                  <p className="text-xs text-muted-foreground">Completed</p>
+                </div>
+                <div className="w-px h-12 bg-border" />
+                <div className="text-center">
+                  <p className="text-3xl font-bold font-mono">{totalCount}</p>
+                  <p className="text-xs text-muted-foreground">Total</p>
+                </div>
+                <div className="w-px h-12 bg-border" />
+                <div className="text-center">
+                  <p className="text-3xl font-bold font-mono text-success">{progressPercent.toFixed(0)}%</p>
+                  <p className="text-xs text-muted-foreground">Progress</p>
+                </div>
               </div>
-              <div className="w-px h-12 bg-border" />
-              <div className="text-center">
-                <p className="text-3xl font-bold font-mono">{totalCount}</p>
-                <p className="text-xs text-muted-foreground">Total</p>
-              </div>
-              <div className="w-px h-12 bg-border" />
-              <div className="text-center">
-                <p className="text-3xl font-bold font-mono text-success">{progressPercent.toFixed(0)}%</p>
-                <p className="text-xs text-muted-foreground">Progress</p>
-              </div>
-            </div>
-          </Card3D>
+            </Card3D>
+          </div>
         </div>
 
         {/* Progress Bar */}
@@ -268,6 +441,14 @@ export default function Roadmap() {
                             )}
                           </div>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteMilestone(milestone.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </Card3D>
                   ))}
