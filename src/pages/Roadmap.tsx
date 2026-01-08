@@ -31,7 +31,11 @@ import {
   FileText,
   Target,
   Plus,
+  List,
+  CalendarDays,
 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MilestoneTimeline } from "@/components/MilestoneTimeline";
 import { cn } from "@/lib/utils";
 import {
   DndContext,
@@ -104,6 +108,7 @@ export default function Roadmap() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "timeline">("list");
   const [newMilestone, setNewMilestone] = useState({
     phase: "",
     title: "",
@@ -307,7 +312,19 @@ export default function Roadmap() {
               Track your journey towards your goals
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "timeline")}>
+              <TabsList>
+                <TabsTrigger value="list" className="gap-2">
+                  <List className="w-4 h-4" />
+                  List
+                </TabsTrigger>
+                <TabsTrigger value="timeline" className="gap-2">
+                  <CalendarDays className="w-4 h-4" />
+                  Timeline
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2">
@@ -412,77 +429,86 @@ export default function Roadmap() {
           </div>
         </Card3D>
 
-        {/* Roadmap Timeline */}
-        <div className="space-y-8">
-          {phases.map((phase, phaseIndex) => {
-            const Icon = phaseIcons[phase] || GraduationCap;
-            const color = phaseColors[phase] || "primary";
-            const phaseMilestones = groupedMilestones[phase];
-            const phaseCompleted = phaseMilestones.every(m => m.is_completed);
-            const phaseProgress = (phaseMilestones.filter(m => m.is_completed).length / phaseMilestones.length) * 100;
+        {/* Timeline View */}
+        {viewMode === "timeline" && (
+          <div className="animate-slide-up">
+            <MilestoneTimeline milestones={milestones} onToggle={toggleMilestone} />
+          </div>
+        )}
 
-            return (
-              <div 
-                key={phase} 
-                className="animate-slide-up opacity-0"
-                style={{ animationDelay: `${0.2 + phaseIndex * 0.1}s` }}
-              >
-                {/* Phase Header */}
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={cn(
-                    "w-14 h-14 rounded-2xl flex items-center justify-center",
-                    phaseCompleted ? "gradient-success glow-success" : `bg-${color}/20`
-                  )}>
-                    <Icon className={cn(
-                      "w-7 h-7",
-                      phaseCompleted ? "text-success-foreground" : `text-${color}`
-                    )} />
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="text-xl font-bold">{phase}</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden max-w-[200px]">
-                        <div 
-                          className={cn(
-                            "h-full rounded-full transition-all",
-                            phaseCompleted ? "gradient-success" : "gradient-primary"
-                          )}
-                          style={{ width: `${phaseProgress}%` }}
-                        />
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {phaseMilestones.filter(m => m.is_completed).length}/{phaseMilestones.length}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+        {/* List View - Roadmap Timeline */}
+        {viewMode === "list" && (
+          <div className="space-y-8">
+            {phases.map((phase, phaseIndex) => {
+              const Icon = phaseIcons[phase] || GraduationCap;
+              const color = phaseColors[phase] || "primary";
+              const phaseMilestones = groupedMilestones[phase];
+              const phaseCompleted = phaseMilestones.every(m => m.is_completed);
+              const phaseProgress = (phaseMilestones.filter(m => m.is_completed).length / phaseMilestones.length) * 100;
 
-                {/* Milestones */}
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event) => handleDragEnd(event, phase)}
+              return (
+                <div 
+                  key={phase} 
+                  className="animate-slide-up opacity-0"
+                  style={{ animationDelay: `${0.2 + phaseIndex * 0.1}s` }}
                 >
-                  <SortableContext
-                    items={phaseMilestones.map((m) => m.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="ml-7 border-l-2 border-border pl-8 space-y-4">
-                      {phaseMilestones.map((milestone) => (
-                        <DraggableMilestone
-                          key={milestone.id}
-                          milestone={milestone}
-                          onToggle={toggleMilestone}
-                          onDelete={deleteMilestone}
-                        />
-                      ))}
+                  {/* Phase Header */}
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className={cn(
+                      "w-14 h-14 rounded-2xl flex items-center justify-center",
+                      phaseCompleted ? "gradient-success glow-success" : `bg-${color}/20`
+                    )}>
+                      <Icon className={cn(
+                        "w-7 h-7",
+                        phaseCompleted ? "text-success-foreground" : `text-${color}`
+                      )} />
                     </div>
-                  </SortableContext>
-                </DndContext>
-              </div>
-            );
-          })}
-        </div>
+                    <div className="flex-1">
+                      <h2 className="text-xl font-bold">{phase}</h2>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden max-w-[200px]">
+                          <div 
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              phaseCompleted ? "gradient-success" : "gradient-primary"
+                            )}
+                            style={{ width: `${phaseProgress}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {phaseMilestones.filter(m => m.is_completed).length}/{phaseMilestones.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Milestones */}
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event) => handleDragEnd(event, phase)}
+                  >
+                    <SortableContext
+                      items={phaseMilestones.map((m) => m.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="ml-7 border-l-2 border-border pl-8 space-y-4">
+                        {phaseMilestones.map((milestone) => (
+                          <DraggableMilestone
+                            key={milestone.id}
+                            milestone={milestone}
+                            onToggle={toggleMilestone}
+                            onDelete={deleteMilestone}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Recommended Courses */}
         <Card3D variant="glass" className="animate-slide-up opacity-0" style={{ animationDelay: "1s" }}>
