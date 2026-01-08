@@ -24,8 +24,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { 
   GraduationCap, 
-  CheckCircle2, 
-  Circle,
   BookOpen,
   Code,
   Shield,
@@ -33,10 +31,24 @@ import {
   FileText,
   Target,
   Plus,
-  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { DraggableMilestone } from "@/components/DraggableMilestone";
 
 interface Milestone {
   id: string;
@@ -46,6 +58,7 @@ interface Milestone {
   is_completed: boolean;
   completed_at: string | null;
   target_date: string | null;
+  display_order: number;
 }
 
 const phaseIcons: Record<string, React.ElementType> = {
@@ -109,7 +122,7 @@ export default function Roadmap() {
       .from("roadmap_milestones")
       .select("*")
       .eq("user_id", user.id)
-      .order("target_date", { ascending: true });
+      .order("display_order", { ascending: true });
 
     if (data) {
       setMilestones(data);
@@ -202,6 +215,59 @@ export default function Roadmap() {
     }
   }
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  async function handleDragEnd(event: DragEndEvent, phase: string) {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id) return;
+
+    const phaseMilestones = groupedMilestones[phase];
+    const oldIndex = phaseMilestones.findIndex((m) => m.id === active.id);
+    const newIndex = phaseMilestones.findIndex((m) => m.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reorderedMilestones = arrayMove(phaseMilestones, oldIndex, newIndex);
+    
+    // Optimistically update UI
+    const newMilestones = milestones.map((m) => {
+      if (m.phase !== phase) return m;
+      const newOrder = reorderedMilestones.findIndex((rm) => rm.id === m.id);
+      return { ...m, display_order: newOrder };
+    });
+    setMilestones(newMilestones);
+
+    // Update database
+    const updates = reorderedMilestones.map((milestone, index) => 
+      supabase
+        .from("roadmap_milestones")
+        .update({ display_order: index })
+        .eq("id", milestone.id)
+    );
+
+    const results = await Promise.all(updates);
+    const hasError = results.some((r) => r.error);
+
+    if (hasError) {
+      toast({
+        title: "Error",
+        description: "Failed to save new order",
+        variant: "destructive",
+      });
+      fetchMilestones(); // Revert to server state
+    }
+  }
+
   const groupedMilestones = milestones.reduce((acc, milestone) => {
     if (!acc[milestone.phase]) {
       acc[milestone.phase] = [];
@@ -209,6 +275,11 @@ export default function Roadmap() {
     acc[milestone.phase].push(milestone);
     return acc;
   }, {} as Record<string, Milestone[]>);
+
+  // Sort each phase's milestones by display_order
+  Object.keys(groupedMilestones).forEach((phase) => {
+    groupedMilestones[phase].sort((a, b) => a.display_order - b.display_order);
+  });
 
   const phases = Object.keys(groupedMilestones);
   const completedCount = milestones.filter(m => m.is_completed).length;
@@ -387,72 +458,27 @@ export default function Roadmap() {
                 </div>
 
                 {/* Milestones */}
-                <div className="ml-7 border-l-2 border-border pl-8 space-y-4">
-                  {phaseMilestones.map((milestone) => (
-                    <Card3D 
-                      key={milestone.id} 
-                      variant={milestone.is_completed ? "glass" : "default"}
-                      className={cn(
-                        "relative !p-4",
-                        milestone.is_completed && "border-success/30"
-                      )}
-                    >
-                      {/* Timeline dot */}
-                      <div className={cn(
-                        "absolute -left-[2.85rem] w-4 h-4 rounded-full border-2",
-                        milestone.is_completed 
-                          ? "bg-success border-success" 
-                          : "bg-background border-muted-foreground"
-                      )} />
-
-                      <div className="flex items-start gap-4">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 mt-0.5"
-                          onClick={() => toggleMilestone(milestone.id, milestone.is_completed)}
-                        >
-                          {milestone.is_completed ? (
-                            <CheckCircle2 className="w-6 h-6 text-success" />
-                          ) : (
-                            <Circle className="w-6 h-6 text-muted-foreground" />
-                          )}
-                        </Button>
-                        <div className="flex-1 min-w-0">
-                          <h3 className={cn(
-                            "font-semibold",
-                            milestone.is_completed && "line-through text-muted-foreground"
-                          )}>
-                            {milestone.title}
-                          </h3>
-                          {milestone.description && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {milestone.description}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                            {milestone.target_date && (
-                              <span>Target: {format(new Date(milestone.target_date), "MMM yyyy")}</span>
-                            )}
-                            {milestone.completed_at && (
-                              <span className="text-success">
-                                Completed: {format(new Date(milestone.completed_at), "MMM d, yyyy")}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="shrink-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteMilestone(milestone.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </Card3D>
-                  ))}
-                </div>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event) => handleDragEnd(event, phase)}
+                >
+                  <SortableContext
+                    items={phaseMilestones.map((m) => m.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="ml-7 border-l-2 border-border pl-8 space-y-4">
+                      {phaseMilestones.map((milestone) => (
+                        <DraggableMilestone
+                          key={milestone.id}
+                          milestone={milestone}
+                          onToggle={toggleMilestone}
+                          onDelete={deleteMilestone}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               </div>
             );
           })}

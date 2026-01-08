@@ -190,6 +190,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           description: string | null
+          display_order: number | null
           id: string
           is_completed: boolean | null
           phase: string
@@ -201,6 +202,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description?: string | null
+          display_order?: number | null
           id?: string
           is_completed?: boolean | null
           phase: string
@@ -212,6 +214,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           description?: string | null
+          display_order?: number | null
           id?: string
           is_completed?: boolean | null
           phase?: string
