@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useRef, useCallback, useEffect } from "react";
 import { Card3D } from "@/components/Card3D";
 import { cn } from "@/lib/utils";
 import { format, differenceInMonths, addMonths, startOfMonth, subMonths } from "date-fns";
@@ -155,6 +155,24 @@ export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelinePro
   const handlePanRight = useCallback(() => {
     setPanOffset((prev) => prev - panStep);
   }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!canPan) return;
+      
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePanLeft();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handlePanRight();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canPan, handlePanLeft, handlePanRight]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!canPan) return;
