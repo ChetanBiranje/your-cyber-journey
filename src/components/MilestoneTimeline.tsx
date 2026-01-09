@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { Card3D } from "@/components/Card3D";
 import { cn } from "@/lib/utils";
 import { format, differenceInMonths, addMonths, startOfMonth, subMonths } from "date-fns";
-import { CheckCircle2, Circle, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { CheckCircle2, Circle, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -55,6 +55,10 @@ const zoomLabels: Record<ZoomLevel, string> = {
 
 export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelineProps) {
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("all");
+  const [panOffset, setPanOffset] = useState(0); // percentage offset for panning
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragStart = useRef({ x: 0, offset: 0 });
 
   const { timelineData, startDate, monthsCount, phases, hasData } = useMemo(() => {
     const milestonesWithDates = milestones.filter(m => m.target_date);
@@ -136,6 +140,64 @@ export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelinePro
     const currentIndex = levels.indexOf(zoomLevel);
     if (currentIndex > 0) {
       setZoomLevel(levels[currentIndex - 1]);
+      setPanOffset(0); // Reset pan when zooming out
+    }
+  };
+
+  // Panning handlers
+  const canPan = zoomLevel !== "all";
+  const panStep = 20; // percentage to pan per step
+
+  const handlePanLeft = useCallback(() => {
+    setPanOffset((prev) => prev + panStep);
+  }, []);
+
+  const handlePanRight = useCallback(() => {
+    setPanOffset((prev) => prev - panStep);
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!canPan) return;
+    isDragging.current = true;
+    dragStart.current = { x: e.clientX, offset: panOffset };
+    e.preventDefault();
+  }, [canPan, panOffset]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging.current || !containerRef.current) return;
+    const containerWidth = containerRef.current.offsetWidth;
+    const deltaX = e.clientX - dragStart.current.x;
+    const deltaPercent = (deltaX / containerWidth) * 100;
+    setPanOffset(dragStart.current.offset + deltaPercent);
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!canPan) return;
+    isDragging.current = true;
+    dragStart.current = { x: e.touches[0].clientX, offset: panOffset };
+  }, [canPan, panOffset]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging.current || !containerRef.current) return;
+    const containerWidth = containerRef.current.offsetWidth;
+    const deltaX = e.touches[0].clientX - dragStart.current.x;
+    const deltaPercent = (deltaX / containerWidth) * 100;
+    setPanOffset(dragStart.current.offset + deltaPercent);
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  // Reset pan when zoom changes to "all"
+  const handleZoomChange = (level: ZoomLevel) => {
+    setZoomLevel(level);
+    if (level === "all") {
+      setPanOffset(0);
     }
   };
 
@@ -190,13 +252,42 @@ export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelinePro
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => setZoomLevel("all")}
+                    onClick={() => handleZoomChange("all")}
                     disabled={zoomLevel === "all"}
                   >
                     <Maximize2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Fit all</TooltipContent>
+              </Tooltip>
+              <div className="w-px h-6 bg-border mx-1" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handlePanLeft}
+                    disabled={!canPan}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Pan left</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={handlePanRight}
+                    disabled={!canPan}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Pan right</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -207,7 +298,7 @@ export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelinePro
                 variant={zoomLevel === level ? "default" : "ghost"}
                 size="sm"
                 className="h-7 px-2 text-xs"
-                onClick={() => setZoomLevel(level)}
+                onClick={() => handleZoomChange(level)}
               >
                 {zoomLabels[level]}
               </Button>
@@ -215,120 +306,146 @@ export function MilestoneTimeline({ milestones, onToggle }: MilestoneTimelinePro
           </div>
         </div>
 
-        {/* Month labels */}
-        <div className="relative h-8 border-b border-border">
-          {monthLabels.map((month, i) => (
-            <div
-              key={i}
-              className="absolute text-xs text-muted-foreground transform -translate-x-1/2"
-              style={{ left: `${month.position}%` }}
-            >
-              <span className="whitespace-nowrap">{month.label}</span>
-              <div className="w-px h-2 bg-border mx-auto mt-1" />
-            </div>
-          ))}
-        </div>
-
-        {/* Today marker */}
-        {showTodayMarker && (
-          <div className="relative">
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-destructive z-10"
-              style={{ left: `${todayPosition}%` }}
-            >
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-destructive font-medium whitespace-nowrap">
-                Today
-              </div>
-            </div>
-          </div>
+        {/* Panning hint */}
+        {canPan && (
+          <p className="text-xs text-muted-foreground text-center">
+            Drag to pan or use arrow buttons • Click milestones to toggle status
+          </p>
         )}
 
-        {/* Phase rows */}
-        <TooltipProvider>
-          <div className="space-y-4">
-            {timelineData.map((phaseData) => {
-              const visibleMilestones = phaseData.milestones.filter(m => m.isVisible);
-              
-              return (
-                <div key={phaseData.phase} className="relative">
-                  {/* Phase label */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: phaseColorMap[phaseData.phase] || "hsl(var(--muted-foreground))" }}
-                    />
-                    <span className="text-sm font-medium">{phaseData.phase}</span>
-                    {visibleMilestones.length !== phaseData.milestones.length && (
-                      <span className="text-xs text-muted-foreground">
-                        ({visibleMilestones.length}/{phaseData.milestones.length} visible)
-                      </span>
-                    )}
-                  </div>
+        {/* Scrollable timeline container */}
+        <div
+          ref={containerRef}
+          className={cn(
+            "relative overflow-hidden",
+            canPan && "cursor-grab active:cursor-grabbing select-none"
+          )}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div
+            className="transition-transform duration-100 ease-out"
+            style={{ transform: `translateX(${panOffset}%)` }}
+          >
+            {/* Month labels */}
+            <div className="relative h-8 border-b border-border">
+              {monthLabels.map((month, i) => (
+                <div
+                  key={i}
+                  className="absolute text-xs text-muted-foreground transform -translate-x-1/2"
+                  style={{ left: `${month.position}%` }}
+                >
+                  <span className="whitespace-nowrap">{month.label}</span>
+                  <div className="w-px h-2 bg-border mx-auto mt-1" />
+                </div>
+              ))}
+            </div>
 
-                  {/* Timeline bar */}
-                  <div className="relative h-12 bg-muted/30 rounded-lg overflow-hidden">
-                    {/* Phase duration bar */}
-                    {visibleMilestones.length > 0 && (
-                      <div
-                        className="absolute h-full rounded-lg opacity-20"
-                        style={{
-                          left: `${Math.max(0, Math.min(...visibleMilestones.map(m => m.position)))}%`,
-                          right: `${Math.max(0, 100 - Math.max(...visibleMilestones.map(m => m.position)))}%`,
-                          backgroundColor: phaseColorMap[phaseData.phase] || "hsl(var(--muted-foreground))",
-                        }}
-                      />
-                    )}
-
-                    {/* Milestone markers */}
-                    {visibleMilestones.map((milestone) => (
-                      <Tooltip key={milestone.id}>
-                        <TooltipTrigger asChild>
-                          <button
-                            className={cn(
-                              "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 cursor-pointer",
-                              milestone.is_completed
-                                ? "bg-success text-success-foreground"
-                                : "bg-background border-2 hover:border-primary"
-                            )}
-                            style={{
-                              left: `${Math.max(2, Math.min(98, milestone.position))}%`,
-                              borderColor: milestone.is_completed ? undefined : phaseColorMap[milestone.phase],
-                            }}
-                            onClick={() => onToggle(milestone.id, milestone.is_completed)}
-                          >
-                            {milestone.is_completed ? (
-                              <CheckCircle2 className="w-5 h-5" />
-                            ) : (
-                              <Circle className="w-5 h-5" style={{ color: phaseColorMap[milestone.phase] }} />
-                            )}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs">
-                          <div className="space-y-1">
-                            <p className="font-semibold">{milestone.title}</p>
-                            {milestone.description && (
-                              <p className="text-xs text-muted-foreground">{milestone.description}</p>
-                            )}
-                            <p className="text-xs">
-                              Target: {format(new Date(milestone.target_date!), "MMM d, yyyy")}
-                            </p>
-                            {milestone.is_completed && milestone.completed_at && (
-                              <p className="text-xs text-success">
-                                Completed: {format(new Date(milestone.completed_at), "MMM d, yyyy")}
-                              </p>
-                            )}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+            {/* Today marker */}
+            {showTodayMarker && (
+              <div className="relative h-0">
+                <div
+                  className="absolute top-0 w-0.5 bg-destructive z-10"
+                  style={{ left: `${todayPosition}%`, height: "calc(100% + 200px)" }}
+                >
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-destructive font-medium whitespace-nowrap">
+                    Today
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </TooltipProvider>
+              </div>
+            )}
 
-        {/* Legend */}
+            {/* Phase rows */}
+            <TooltipProvider>
+              <div className="space-y-4 pt-4">
+                {timelineData.map((phaseData) => {
+                  const visibleMilestones = phaseData.milestones.filter(m => m.isVisible);
+                  
+                  return (
+                    <div key={phaseData.phase} className="relative">
+                      {/* Phase label */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: phaseColorMap[phaseData.phase] || "hsl(var(--muted-foreground))" }}
+                        />
+                        <span className="text-sm font-medium">{phaseData.phase}</span>
+                        {visibleMilestones.length !== phaseData.milestones.length && (
+                          <span className="text-xs text-muted-foreground">
+                            ({visibleMilestones.length}/{phaseData.milestones.length} visible)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Timeline bar */}
+                      <div className="relative h-12 bg-muted/30 rounded-lg overflow-hidden">
+                        {/* Phase duration bar */}
+                        {visibleMilestones.length > 0 && (
+                          <div
+                            className="absolute h-full rounded-lg opacity-20"
+                            style={{
+                              left: `${Math.max(0, Math.min(...visibleMilestones.map(m => m.position)))}%`,
+                              right: `${Math.max(0, 100 - Math.max(...visibleMilestones.map(m => m.position)))}%`,
+                              backgroundColor: phaseColorMap[phaseData.phase] || "hsl(var(--muted-foreground))",
+                            }}
+                          />
+                        )}
+
+                        {/* Milestone markers */}
+                        {visibleMilestones.map((milestone) => (
+                          <Tooltip key={milestone.id}>
+                            <TooltipTrigger asChild>
+                              <button
+                                className={cn(
+                                  "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 cursor-pointer",
+                                  milestone.is_completed
+                                    ? "bg-success text-success-foreground"
+                                    : "bg-background border-2 hover:border-primary"
+                                )}
+                                style={{
+                                  left: `${Math.max(2, Math.min(98, milestone.position))}%`,
+                                  borderColor: milestone.is_completed ? undefined : phaseColorMap[milestone.phase],
+                                }}
+                                onClick={() => onToggle(milestone.id, milestone.is_completed)}
+                              >
+                                {milestone.is_completed ? (
+                                  <CheckCircle2 className="w-5 h-5" />
+                                ) : (
+                                  <Circle className="w-5 h-5" style={{ color: phaseColorMap[milestone.phase] }} />
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <div className="space-y-1">
+                                <p className="font-semibold">{milestone.title}</p>
+                                {milestone.description && (
+                                  <p className="text-xs text-muted-foreground">{milestone.description}</p>
+                                )}
+                                <p className="text-xs">
+                                  Target: {format(new Date(milestone.target_date!), "MMM d, yyyy")}
+                                </p>
+                                {milestone.is_completed && milestone.completed_at && (
+                                  <p className="text-xs text-success">
+                                    Completed: {format(new Date(milestone.completed_at), "MMM d, yyyy")}
+                                  </p>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </TooltipProvider>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-4 pt-4 border-t border-border">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <div className="w-4 h-4 rounded-full bg-success flex items-center justify-center">
